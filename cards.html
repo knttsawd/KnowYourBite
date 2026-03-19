@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>KnowYourBite</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f0f7f2;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #1e6b3c;
+            font-size: 40px;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #888;
+            font-size: 16px;
+            margin-bottom: 40px;
+        }
+
+        .cards-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 24px;
+            justify-content: center;
+        }
+
+        .card {
+            background-color: white;
+            border-radius: 20px;
+            padding: 28px 24px;
+            width: 220px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            text-align: center;
+            border-top: 5px solid #2c7a4b;
+        }
+
+        .card h2 {
+            font-size: 20px;
+            color: #1e6b3c;
+            margin-bottom: 12px;
+        }
+
+        .card p {
+            font-size: 13px;
+            color: #777;
+            line-height: 1.5;
+            margin-bottom: 16px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .safe {
+            background-color: #e6f4ec;
+            color: #2c7a4b;
+        }
+
+        .warning {
+            background-color: #fff4e0;
+            color: #d4860a;
+        }
+
+        .danger {
+            background-color: #fde8e8;
+            color: #c0392b;
+        }
+    </style>
+</head>
+<body>
+    <h1> KnowYourBite</h1>
+    <p class="subtitle">Scan your ingredients and know what you eat</p>
+
+    <div class="cards-container">
+
+        <div class="card">
+            <h2>Water</h2>
+            <p>Essential for life. Makes up most of your body and keeps you hydrated.</p>
+            <span class="badge safe">✅ Safe</span>
+        </div>
+
+        <div class="card">
+            <h2>Sugar</h2>
+            <p>Provides energy but too much can cause health issues over time.</p>
+            <span class="badge warning">⚠️ Moderate</span>
+        </div>
+
+        <div class="card">
+            <h2>Salt</h2>
+            <p>Enhances flavor but high amounts can affect blood pressure.</p>
+            <span class="badge warning">⚠️ Moderate</span>
+        </div>
+
+        <div class="card">
+            <h2>Citric Acid</h2>
+            <p>Natural preservative found in citrus fruits. Generally safe to consume.</p>
+            <span class="badge safe">✅ Safe</span>
+        </div>
+
+        <div class="card">
+            <h2>Artificial Dye</h2>
+            <p>Synthetic coloring that may cause reactions in sensitive individuals.</p>
+            <span class="badge danger">🚨 Harmful</span>
+        </div>
+
+    </div>
+</body>
+</html>
