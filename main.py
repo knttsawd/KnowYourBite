@@ -2,6 +2,7 @@ import cv2
 import time
 import pytesseract
 from PIL import Image
+from llama_cpp import Llama
 from kivymd.app import MDApp
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.card import MDCard
@@ -11,8 +12,8 @@ from kivymd.uix.gridlayout import MDGridLayout
 from kivymd.uix.button import MDRaisedButton
 from kivymd.uix.boxlayout import MDBoxLayout
 
-pytesseract.pytesseract.tesseract_cmd = r'C:\Users\donal\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
-
+#pytesseract.pytesseract.tesseract_cmd = r'C:\Users\donal\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
+classifierLLM = Llama(model_path=("models\Phi-3-mini-4k-instruct-q4.gguf"))
 class KnowYourBiteApp(MDApp):
     def build(self):
         self.theme_cls.primary_palette = "Green"
@@ -45,8 +46,9 @@ class KnowYourBiteApp(MDApp):
         self.grid = MDGridLayout(
             cols=2,
             spacing=20,
-            padding=20,
-            size_hint_y=None
+            padding=20,size_hint=(1, None),
+adaptive_height=True,
+
         )
         self.grid.bind(minimum_height=self.grid.setter("height"))
         self.scroll.add_widget(self.grid)
@@ -68,7 +70,7 @@ class KnowYourBiteApp(MDApp):
 
         # Step 2 - Read text
         image = Image.open("test_photo.jpg")
-        raw_text = pytesseract.image_to_string(image)
+        raw_text = "" #pytesseract.image_to_string(image)
 
         # Step 3 - Parse ingredients
         if not raw_text.strip():
@@ -79,18 +81,34 @@ class KnowYourBiteApp(MDApp):
         # Step 4 - Show cards
         self.grid.clear_widgets()
         for ingredient in ingredients:
+            response = classifierLLM(f"Explain the food ingredient {ingredient} in clear, simple language. Describe what it is, why it is used in food, and any health benefits or concerns. Do not include any special tokens, role markers, or formatting symbols.", max_tokens=50)
+            text=response["choices"][0]["text"]
+            text=text.split("<|assistant|>")
             card = MDCard(
-                size_hint=(None, None),
-                size=("180dp", "150dp"),
+                orientation="vertical",
+                padding=16,
                 radius=[20],
                 elevation=4,
-                padding=16
+                size_hint=(1, None),
+                adaptive_height=True
             )
+
             label = MDLabel(
                 text=ingredient,
-                halign="center"
+                halign="center",
+                size_hint_y=None,
+                adaptive_height=True
             )
+
+            definition = MDLabel(
+                text=text[-1],
+                halign="center",
+                size_hint_y=None,
+                adaptive_height=True
+            )
+
             card.add_widget(label)
+            card.add_widget(definition)
             self.grid.add_widget(card)
 
 KnowYourBiteApp().run()
