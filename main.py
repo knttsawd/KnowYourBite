@@ -12,7 +12,7 @@ from kivymd.uix.gridlayout import MDGridLayout
 from kivymd.uix.button import MDRaisedButton
 from kivymd.uix.boxlayout import MDBoxLayout
 
-#pytesseract.pytesseract.tesseract_cmd = r'C:\Users\donal\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
+pytesseract.pytesseract.tesseract_cmd = r'C:\Users\donal\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
 classifierLLM = Llama(model_path=("models\Phi-3-mini-4k-instruct-q4.gguf"))
 class KnowYourBiteApp(MDApp):
     def build(self):
@@ -70,7 +70,7 @@ adaptive_height=True,
 
         # Step 2 - Read text
         image = Image.open("test_photo.jpg")
-        raw_text = "" #pytesseract.image_to_string(image)
+        raw_text = pytesseract.image_to_string(image)
 
         # Step 3 - Parse ingredients
         if not raw_text.strip():
