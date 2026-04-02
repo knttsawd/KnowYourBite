@@ -12,8 +12,8 @@ from kivymd.uix.scrollview import MDScrollView
 from kivymd.uix.gridlayout import MDGridLayout
 from kivymd.uix.button import MDRaisedButton
 from kivymd.uix.boxlayout import MDBoxLayout
-# import pytesseract
-# pytesseract.pytesseract.tesseract_cmd = r'C:\Users\donal\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
+import pytesseract
+pytesseract.pytesseract.tesseract_cmd = r'C:\Users\donal\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
 
 classifierLLM = Llama(model_path="models/Phi-3-mini-4k-instruct-q4.gguf")
 
@@ -67,21 +67,17 @@ class KnowYourBiteApp(MDApp):
         flat = {}
 
         for key, value in info.items():
-            # Case 1: value is a dict with an "en" field
             if isinstance(value, dict):
                 en_value = value.get("en")
                 if isinstance(en_value, str) and en_value.strip():
                     flat[key] = en_value.strip()
 
-            # Case 2: value is a simple string or number
             elif isinstance(value, (str, int, float)):
                 if str(value).strip():
                     flat[key] = value
 
-            # Ignore anything else (lists, None, empty dicts, etc.)
 
         return flat
-    # FIXED: Proper method signature
     def match_additive(self, ingredient, additives):
         ingredient = ingredient.lower()
 
@@ -113,10 +109,8 @@ class KnowYourBiteApp(MDApp):
 
         return text.strip()
     def remove_incomplete_sentence(self, text):
-        # Split into sentences using punctuation
         sentences = re.split(r'(?<=[.!?]) +', text)
 
-        # If the last sentence doesn't end with punctuation, drop it
         if sentences and not sentences[-1].strip().endswith(('.', '!', '?')):
             sentences = sentences[:-1]
 
@@ -132,7 +126,7 @@ class KnowYourBiteApp(MDApp):
         cam.release()
 
         image = Image.open("test_photo.jpg")
-        raw_text = "" # pytesseract.image_to_string(image)
+        raw_text = pytesseract.image_to_string(image)
 
         if not raw_text.strip():
             raw_text = "Salt, Water, Sugar, Natural Flavors, Citric Acid, Cryptoaxanthin"
