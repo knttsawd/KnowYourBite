@@ -1,6 +1,7 @@
 import cv2
 import time
-import pytesseract
+import json
+import re
 from PIL import Image
 from llama_cpp import Llama
 from kivymd.app import MDApp
@@ -11,19 +12,24 @@ from kivymd.uix.scrollview import MDScrollView
 from kivymd.uix.gridlayout import MDGridLayout
 from kivymd.uix.button import MDRaisedButton
 from kivymd.uix.boxlayout import MDBoxLayout
+# import pytesseract
+# pytesseract.pytesseract.tesseract_cmd = r'C:\Users\donal\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
 
-pytesseract.pytesseract.tesseract_cmd = r'C:\Users\donal\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
-classifierLLM = Llama(model_path=("models\Phi-3-mini-4k-instruct-q4.gguf"))
+classifierLLM = Llama(model_path="models/Phi-3-mini-4k-instruct-q4.gguf")
+
+with open("additives.json", "r", encoding="utf-8") as f:
+    additives = json.load(f)
+
+
 class KnowYourBiteApp(MDApp):
+
     def build(self):
         self.theme_cls.primary_palette = "Green"
 
         self.screen = MDScreen()
 
-        # Main layout
         layout = MDBoxLayout(orientation="vertical", padding=20, spacing=20)
 
-        # Title
         title = MDLabel(
             text="KnowYourBite",
             halign="center",
@@ -32,7 +38,6 @@ class KnowYourBiteApp(MDApp):
             height="60dp"
         )
 
-        # Scan button
         btn = MDRaisedButton(
             text="Scan Ingredient Label",
             pos_hint={"center_x": 0.5},
@@ -41,14 +46,13 @@ class KnowYourBiteApp(MDApp):
             on_release=self.scan
         )
 
-        # Scrollable card grid
         self.scroll = MDScrollView()
         self.grid = MDGridLayout(
-            cols=2,
+            cols=1,
             spacing=20,
-            padding=20,size_hint=(1, None),
-adaptive_height=True,
-
+            padding=20,
+            size_hint=(1, None),
+            adaptive_height=True
         )
         self.grid.bind(minimum_height=self.grid.setter("height"))
         self.scroll.add_widget(self.grid)
@@ -59,56 +63,144 @@ adaptive_height=True,
 
         self.screen.add_widget(layout)
         return self.screen
+    def flatten_info(self, info):
+        flat = {}
+
+        for key, value in info.items():
+            # Case 1: value is a dict with an "en" field
+            if isinstance(value, dict):
+                en_value = value.get("en")
+                if isinstance(en_value, str) and en_value.strip():
+                    flat[key] = en_value.strip()
+
+            # Case 2: value is a simple string or number
+            elif isinstance(value, (str, int, float)):
+                if str(value).strip():
+                    flat[key] = value
+
+            # Ignore anything else (lists, None, empty dicts, etc.)
+
+        return flat
+    # FIXED: Proper method signature
+    def match_additive(self, ingredient, additives):
+        ingredient = ingredient.lower()
+
+        for key, item in additives.items():
+            name_field = item.get("name")
+
+            if isinstance(name_field, dict):
+                en = name_field.get("en", "")
+                if isinstance(en, str) and ingredient in en.lower():
+                    return item
+
+                for lang_name in name_field.values():
+                    if isinstance(lang_name, str) and ingredient in lang_name.lower():
+                        return item
+
+            elif isinstance(name_field, str):
+                if ingredient in name_field.lower():
+                    return item
+
+        return None
+    def clean_artifacts(self, text):
+        bad_tokens = [
+            "<|assistant|>", "<|user|>", "<|system|>",
+            "<s>", "</s>", "###", "```", "****"
+        ]
+
+        for token in bad_tokens:
+            text = text.replace(token, "")
+
+        return text.strip()
+    def remove_incomplete_sentence(self, text):
+        # Split into sentences using punctuation
+        sentences = re.split(r'(?<=[.!?]) +', text)
+
+        # If the last sentence doesn't end with punctuation, drop it
+        if sentences and not sentences[-1].strip().endswith(('.', '!', '?')):
+            sentences = sentences[:-1]
+
+        return " ".join(sentences).strip()
 
     def scan(self, instance):
-        # Step 1 - Take photo
+        global additives
+
         cam = cv2.VideoCapture(0, cv2.CAP_DSHOW)
         time.sleep(2)
         ret, frame = cam.read()
         cv2.imwrite("test_photo.jpg", frame)
         cam.release()
 
-        # Step 2 - Read text
         image = Image.open("test_photo.jpg")
-        raw_text = pytesseract.image_to_string(image)
+        raw_text = "" # pytesseract.image_to_string(image)
 
-        # Step 3 - Parse ingredients
         if not raw_text.strip():
-            raw_text = "Water, Sugar, Salt, Citric Acid, Natural Flavors"
+            raw_text = "Salt, Water, Sugar, Natural Flavors, Citric Acid, Cryptoaxanthin"
 
         ingredients = [item.strip() for item in raw_text.split(",") if item.strip()]
 
-        # Step 4 - Show cards
         self.grid.clear_widgets()
+
         for ingredient in ingredients:
-            response = classifierLLM(f"Explain the food ingredient {ingredient} in clear, simple language. Describe what it is, why it is used in food, and any health benefits or concerns. Do not include any special tokens, role markers, or formatting symbols.", max_tokens=50)
-            text=response["choices"][0]["text"]
-            text=text.split("<|assistant|>")
+            active_ingredient_info = self.match_additive(" " + ingredient, additives)
+            if active_ingredient_info:
+                ALLOWED_KEYS = [
+    "additives_classes",
+    "vegan",
+    "vegetarian",
+    "organic_eu"
+]
+                info = self.flatten_info(active_ingredient_info)
+                info = {key: value for key, value in info.items() if key in ALLOWED_KEYS}
+                prompt = (
+                    f"Provide a clear explanation of the food ingredient {ingredient} in simple language. Limit yourself to 3 paragraphs "
+                    f"using only the information found here: {info}. "
+                    "Describe what it is, why it is used in food, and any general health considerations. "
+                    "Avoid special tokens or formatting symbols."
+                )
+                response = classifierLLM(prompt, max_tokens=600)
+            else:
+                prompt = (
+                    f"Explain the food ingredient {ingredient} in clear, simple language. Limit yourself to 3 sentences. "
+                    "Describe what it is, why it is used in food, and any general health considerations. "
+                    "Avoid special tokens or formatting symbols."
+                )
+
+                response = classifierLLM(prompt, max_tokens=100)
+
+            text = response["choices"][0]["text"].strip()
+            text = self.clean_artifacts(text)
+            text = self.remove_incomplete_sentence(text)
             card = MDCard(
                 orientation="vertical",
-                padding=16,
-                radius=[20],
-                elevation=4,
+                padding=20,
+                radius=[25],
+                elevation=6,
                 size_hint=(1, None),
+                md_bg_color=(0.98, 0.98, 0.98, 1),
                 adaptive_height=True
             )
 
             label = MDLabel(
                 text=ingredient,
-                halign="center",
+                halign="left",
+                font_style="H6",
                 size_hint_y=None,
-                adaptive_height=True
+                height="30dp"
             )
 
             definition = MDLabel(
-                text=text[-1],
-                halign="center",
+                text=text,
+                halign="left",
+                theme_text_color="Secondary",
                 size_hint_y=None,
+                text_size=(self.screen.width - 80, None),
                 adaptive_height=True
             )
 
             card.add_widget(label)
             card.add_widget(definition)
             self.grid.add_widget(card)
+
 
 KnowYourBiteApp().run()
