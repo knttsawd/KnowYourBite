@@ -15,76 +15,12 @@ from kivymd.uix.button import MDRaisedButton
 from kivymd.uix.boxlayout import MDBoxLayout
 import pytesseract
 import requests
-#pytesseract.pytesseract.tesseract_cmd = r'C:\Users\donal\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
+pytesseract.pytesseract.tesseract_cmd = r'C:\Users\donal\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
 
 classifierLLM = Llama(model_path="models/Phi-3-mini-4k-instruct-q4.gguf")
 
 with open("additives.json", "r", encoding="utf-8") as f:
     additives = json.load(f)
-
-def cas_from_enumber(e_number):
-    ins = re.sub(r"^[eE]\s*", "", e_number).strip()
-
-    query = f"""
-    SELECT ?cas WHERE {{
-      ?item wdt:P1013 "{ins}" .   # INS number property
-      ?item wdt:P231 ?cas .       # CAS number property
-    }}
-    """
-
-    url = "https://query.wikidata.org/sparql"
-    headers = {"Accept": "application/sparql-results+json"}
-
-    r = requests.get(url, params={"query": query}, headers=headers)
-
-    if r.status_code != 200:
-        return None
-
-    data = r.json()
-
-    results = data.get("results", {}).get("bindings", [])
-    if not results:
-        return None
-
-    return results[0]["cas"]["value"]
-
-def search_jecfa(e_num):
-    url = "https://www.fao.org/food/food-safety-quality/scientific-advice/jecfa/jecfa-additives/en/c/"
-    cas = cas_from_enumber(e_num)
-    params = {"search": cas}
-    r = requests.get(url, params=params)
-
-    if r.status_code != 200:
-        return None
-
-    soup = BeautifulSoup(r.text, "html.parser")
-
-    tables = soup.find_all("table")
-    if not tables:
-        return None
-
-    results = []
-
-    for table in tables:
-        rows = table.find_all("tr")
-        if not rows:
-            continue
-
-        header = [h.get_text(strip=True).lower() for h in rows[0].find_all("th")]
-
-        if ("name" in header and "adi" in header) or len(header) >= 3:
-            for row in rows[1:]:
-                cols = [c.get_text(strip=True) for c in row.find_all("td")]
-                if len(cols) >= 3:
-                    results.append({
-                        "name": cols[0],
-                        "ins_number": cols[1] if len(cols) > 1 else None,
-                        "adi": cols[2] if len(cols) > 2 else None,
-                        "notes": cols[3] if len(cols) > 3 else None
-                    })
-
-    return results
-
 
 class KnowYourBiteApp(MDApp):
 
@@ -212,8 +148,8 @@ class KnowYourBiteApp(MDApp):
         cv2.imwrite("test_photo.jpg", frame)
         cam.release()
 
-        #image = Image.open("test_photo.jpg")
-        raw_text = "" #pytesseract.image_to_string(image)
+        image = Image.open("test_photo.jpg")
+        raw_text = pytesseract.image_to_string(image)
 
         if not raw_text.strip():
             raw_text = "Salt, Water, Sugar, Natural Flavors, Citric Acid, Cryptoaxanthin, Sodium Nitrate"
@@ -233,7 +169,6 @@ class KnowYourBiteApp(MDApp):
                 ]
                 info = self.flatten_info(active_ingredient_info)
                 info = {key: value for key, value in info.items() if key in ALLOWED_KEYS}
-                print(info)
                 if info:
                     prompt = (
     f"Using only the information found here: {info}, explain the general safety of {ingredient} "
