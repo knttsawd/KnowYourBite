@@ -3,6 +3,7 @@ import time
 import json
 import re
 from PIL import Image
+from bs4 import BeautifulSoup
 from llama_cpp import Llama
 from kivymd.app import MDApp
 from kivymd.uix.screen import MDScreen
@@ -13,12 +14,76 @@ from kivymd.uix.gridlayout import MDGridLayout
 from kivymd.uix.button import MDRaisedButton
 from kivymd.uix.boxlayout import MDBoxLayout
 import pytesseract
-pytesseract.pytesseract.tesseract_cmd = r'C:\Users\donal\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
+import requests
+#pytesseract.pytesseract.tesseract_cmd = r'C:\Users\donal\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
 
 classifierLLM = Llama(model_path="models/Phi-3-mini-4k-instruct-q4.gguf")
 
 with open("additives.json", "r", encoding="utf-8") as f:
     additives = json.load(f)
+
+def cas_from_enumber(e_number):
+    ins = re.sub(r"^[eE]\s*", "", e_number).strip()
+
+    query = f"""
+    SELECT ?cas WHERE {{
+      ?item wdt:P1013 "{ins}" .   # INS number property
+      ?item wdt:P231 ?cas .       # CAS number property
+    }}
+    """
+
+    url = "https://query.wikidata.org/sparql"
+    headers = {"Accept": "application/sparql-results+json"}
+
+    r = requests.get(url, params={"query": query}, headers=headers)
+
+    if r.status_code != 200:
+        return None
+
+    data = r.json()
+
+    results = data.get("results", {}).get("bindings", [])
+    if not results:
+        return None
+
+    return results[0]["cas"]["value"]
+
+def search_jecfa(e_num):
+    url = "https://www.fao.org/food/food-safety-quality/scientific-advice/jecfa/jecfa-additives/en/c/"
+    cas = cas_from_enumber(e_num)
+    params = {"search": cas}
+    r = requests.get(url, params=params)
+
+    if r.status_code != 200:
+        return None
+
+    soup = BeautifulSoup(r.text, "html.parser")
+
+    tables = soup.find_all("table")
+    if not tables:
+        return None
+
+    results = []
+
+    for table in tables:
+        rows = table.find_all("tr")
+        if not rows:
+            continue
+
+        header = [h.get_text(strip=True).lower() for h in rows[0].find_all("th")]
+
+        if ("name" in header and "adi" in header) or len(header) >= 3:
+            for row in rows[1:]:
+                cols = [c.get_text(strip=True) for c in row.find_all("td")]
+                if len(cols) >= 3:
+                    results.append({
+                        "name": cols[0],
+                        "ins_number": cols[1] if len(cols) > 1 else None,
+                        "adi": cols[2] if len(cols) > 2 else None,
+                        "notes": cols[3] if len(cols) > 3 else None
+                    })
+
+    return results
 
 
 class KnowYourBiteApp(MDApp):
@@ -76,8 +141,30 @@ class KnowYourBiteApp(MDApp):
                 if str(value).strip():
                     flat[key] = value
 
-
         return flat
+    def extract_tier(self, response_text):
+        text = response_text.lower()
+        moderation_keywords = [
+            "moderation", "moderate", "limit", "limited amounts",
+            "not too much", "small amounts", "consume carefully"
+        ]
+        if any(word in text for word in moderation_keywords):
+            return "Safe in Moderation"
+        concern_keywords = [
+            "concern", "risk", "avoid", "harmful", "safety concerns",
+            "higher risk", "potential issues", "watch out", "problematic"
+        ]
+        if any(word in text for word in concern_keywords):
+            return "Higher Concern"
+        safe_keywords = [
+            "safe", "generally safe", "low concern", "not a major concern",
+            "considered safe", "minimal concern"
+        ]
+        if any(word in text for word in safe_keywords):
+            return "Safe"
+        return None
+
+
     def match_additive(self, ingredient, additives):
         ingredient = ingredient.lower()
 
@@ -125,11 +212,11 @@ class KnowYourBiteApp(MDApp):
         cv2.imwrite("test_photo.jpg", frame)
         cam.release()
 
-        image = Image.open("test_photo.jpg")
-        raw_text = pytesseract.image_to_string(image)
+        #image = Image.open("test_photo.jpg")
+        raw_text = "" #pytesseract.image_to_string(image)
 
         if not raw_text.strip():
-            raw_text = "Salt, Water, Sugar, Natural Flavors, Citric Acid, Cryptoaxanthin"
+            raw_text = "Salt, Water, Sugar, Natural Flavors, Citric Acid, Cryptoaxanthin, Sodium Nitrate"
 
         ingredients = [item.strip() for item in raw_text.split(",") if item.strip()]
 
@@ -139,32 +226,45 @@ class KnowYourBiteApp(MDApp):
             active_ingredient_info = self.match_additive(" " + ingredient, additives)
             if active_ingredient_info:
                 ALLOWED_KEYS = [
-    "additives_classes",
-    "vegan",
-    "vegetarian",
-    "organic_eu"
-]
+                    "additives_classes",
+                    "vegan",
+                    "vegetarian",
+                    "organic_eu"
+                ]
                 info = self.flatten_info(active_ingredient_info)
                 info = {key: value for key, value in info.items() if key in ALLOWED_KEYS}
-                prompt = (
-                    f"Provide a clear explanation of the food ingredient {ingredient} in simple language. Limit yourself to 3 paragraphs "
-                    f"using only the information found here: {info}. "
-                    "Describe what it is, why it is used in food, and any general health considerations. "
-                    "Avoid special tokens or formatting symbols."
-                )
-                response = classifierLLM(prompt, max_tokens=600)
+                print(info)
+                if info:
+                    prompt = (
+    f"Using only the information found here: {info}, explain the general safety of {ingredient} "
+    "by placing it into one of three broad tiers: Safe, Safe in Moderation, or Higher Concern. "
+    "Use simple, educational language and keep the explanation to three sentences. "
+    "Describe what the ingredient is, why it is used in food, and any general considerations "
+    "that food-safety authorities highlight. Avoid medical advice."
+)
+                else:
+                    prompt = (
+    f"Explain the general safety of {ingredient} using three broad tiers: "
+    "Safe, Safe in Moderation, or Higher Concern. "
+    "Use simple, educational language and keep the explanation to three sentences. "
+    "Describe what the ingredient is, why it is used in food, and any general considerations "
+    "that food-safety authorities highlight. Avoid medical advice."
+)
+
+                response = classifierLLM(f"<|begin_of_text|><|start_header_id|>user<|end_header_id|>{prompt}<|start_header_id|>assistant<|end_header_id|>", max_tokens=600)
             else:
                 prompt = (
-                    f"Explain the food ingredient {ingredient} in clear, simple language. Limit yourself to 3 sentences. "
-                    "Describe what it is, why it is used in food, and any general health considerations. "
-                    "Avoid special tokens or formatting symbols."
-                )
-
-                response = classifierLLM(prompt, max_tokens=100)
-
+    f"Explain the general safety of {ingredient} using three broad tiers: "
+    "Safe, Safe in Moderation, or Higher Concern. "
+    "Use simple, educational language and keep the explanation to three sentences. "
+    "Describe what the ingredient is, why it is used in food, and any general considerations "
+    "that major food-safety authorities highlight. Avoid medical advice."
+)
+                response = classifierLLM(f"<|begin_of_text|><|start_header_id|>user<|end_header_id|>{prompt}<|start_header_id|>assistant<|end_header_id|>", max_tokens=100)
             text = response["choices"][0]["text"].strip()
             text = self.clean_artifacts(text)
             text = self.remove_incomplete_sentence(text)
+            text = text.split("\n")[0]
             card = MDCard(
                 orientation="vertical",
                 padding=20,
@@ -176,7 +276,7 @@ class KnowYourBiteApp(MDApp):
             )
 
             label = MDLabel(
-                text=ingredient,
+                text=f"{ingredient} - {self.extract_tier(text)}",
                 halign="left",
                 font_style="H6",
                 size_hint_y=None,
