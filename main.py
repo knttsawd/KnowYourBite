@@ -16,6 +16,7 @@ from kivymd.uix.scrollview import MDScrollView
 from kivymd.uix.gridlayout import MDGridLayout
 from kivymd.uix.button import MDRaisedButton, MDFlatButton
 from kivymd.uix.boxlayout import MDBoxLayout
+<<<<<<< Updated upstream
 from kivymd.uix.spinner import MDSpinner
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.textfield import MDTextField
@@ -24,9 +25,53 @@ from rapidfuzz import fuzz
 import pytesseract
 
 logging.basicConfig(filename="app.log", level=logging.INFO)
+=======
+from kivy.graphics import Color, RoundedRectangle
+from kivy.uix.boxlayout import BoxLayout
+>>>>>>> Stashed changes
 
-pytesseract.pytesseract.tesseract_cmd = r'C:\Users\donal\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'
+import cv2
+import time
+import os
+import sys
+import shutil
+import pytesseract
+from PIL import Image
 
+import shutil
+import sys
+
+# Automatically find Tesseract on any device
+tesseract_path = shutil.which("tesseract")
+
+if tesseract_path:
+    pytesseract.pytesseract.tesseract_cmd = tesseract_path
+elif sys.platform == "win32":
+    # Common Windows locations
+    for path in [
+        r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+        r'C:\Users\{}\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'.format(os.getenv('USERNAME'))
+    ]:
+        if os.path.exists(path):
+            pytesseract.pytesseract.tesseract_cmd = path
+            break
+
+BADGE_COLORS = {
+    "safe": (0.18, 0.8, 0.44, 1),
+    "warning": (1, 0.76, 0.03, 1),
+    "danger": (0.91, 0.3, 0.24, 1),
+}
+
+CARD_COLORS = [
+    (0.98, 0.36, 0.36, 1),
+    (0.36, 0.78, 0.98, 1),
+    (0.56, 0.93, 0.56, 1),
+    (0.98, 0.78, 0.36, 1),
+    (0.78, 0.56, 0.98, 1),
+    (0.98, 0.56, 0.78, 1),
+]
+
+<<<<<<< Updated upstream
 classifierLLM = Llama(
     model_path="models/Phi-3-mini-4k-instruct-q4.gguf",
     n_threads=4,
@@ -118,9 +163,66 @@ class KnowYourBiteApp(MDApp):
 
         scan_btn = MDRaisedButton(
             text="Scan Ingredient Label",
-            pos_hint={"center_x": 0.5},
+=======
+class KnowYourBiteApp(MDApp):
+    def build(self):
+        self.theme_cls.primary_palette = "Green"
+        self.theme_cls.theme_style = "Light"
+
+        self.screen = MDScreen(md_bg_color=(0.9, 0.98, 0.93, 1))
+
+        # Main layout
+        main_layout = MDBoxLayout(
+            orientation="vertical",
+            padding=[20, 30, 20, 20],
+            spacing=16
+        )
+
+        # Logo + Title
+        title_layout = MDBoxLayout(
+            orientation="vertical",
             size_hint_y=None,
-            height="50dp",
+            height="120dp",
+            spacing=4
+        )
+
+        logo = MDLabel(
+    text=" KnowYourBite ",
+    halign="center",
+    font_style="H2",
+    theme_text_color="Custom",
+    text_color=(0.18, 0.8, 0.44, 1),
+    size_hint_y=None,
+    height="80dp",
+    bold=True
+)
+
+        title = MDLabel(
+    text=" Eat Smart. Live Well.",
+        )
+
+        subtitle = MDLabel(
+            text="Scan your label. Know what you eat.",
+            halign="center",
+            font_style="Caption",
+            theme_text_color="Custom",
+            text_color=(0.5, 0.5, 0.5, 1),
+            size_hint_y=None,
+            height="30dp"
+        )
+
+        title_layout.add_widget(logo)
+        title_layout.add_widget(title)
+        title_layout.add_widget(subtitle)
+
+        # Scan button
+        btn = MDRaisedButton(
+            text="📷  Scan Ingredient Label",
+>>>>>>> Stashed changes
+            pos_hint={"center_x": 0.5},
+            size_hint=(0.7, None),
+            height="52dp",
+            md_bg_color=(0.18, 0.8, 0.44, 1),
             on_release=self.scan
         )
 
@@ -153,15 +255,23 @@ class KnowYourBiteApp(MDApp):
 
         self.scroll = MDScrollView()
         self.grid = MDGridLayout(
+<<<<<<< Updated upstream
             cols=1,
             spacing=20,
             padding=20,
             size_hint=(1, None),
             adaptive_height=True
+=======
+            cols=2,
+            spacing=16,
+            padding=[10, 10, 10, 10],
+            size_hint_y=None
+>>>>>>> Stashed changes
         )
         self.grid.bind(minimum_height=self.grid.setter("height"))
         self.scroll.add_widget(self.grid)
 
+<<<<<<< Updated upstream
         layout.add_widget(title)
         layout.add_widget(scan_btn)
         layout.add_widget(manual_btn)
@@ -169,8 +279,13 @@ class KnowYourBiteApp(MDApp):
         layout.add_widget(clear_btn)
         layout.add_widget(self.spinner)
         layout.add_widget(self.scroll)
+=======
+        main_layout.add_widget(title_layout)
+        main_layout.add_widget(btn)
+        main_layout.add_widget(self.scroll)
+>>>>>>> Stashed changes
 
-        self.screen.add_widget(layout)
+        self.screen.add_widget(main_layout)
         return self.screen
 
     def clean_text(self, text):
@@ -249,6 +364,7 @@ class KnowYourBiteApp(MDApp):
 
     def _process_frame_async(self, frame):
         self.grid.clear_widgets()
+<<<<<<< Updated upstream
 
         try:
             cv2.imwrite("test_photo.jpg", frame)
@@ -398,5 +514,52 @@ class KnowYourBiteApp(MDApp):
         for ingredient, tier, explanation in self.history:
             self.add_card(ingredient, tier, explanation)
 
+=======
+        for i, ingredient in enumerate(ingredients):
+            color = CARD_COLORS[i % len(CARD_COLORS)]
+
+            card = MDCard(
+                size_hint=(None, None),
+                size=("200dp", "180dp"),
+                radius=[24],
+                elevation=6,
+                padding=16,
+                md_bg_color=color
+            )
+
+            card_layout = MDBoxLayout(orientation="vertical", spacing=8)
+
+            name_label = MDLabel(
+                text=ingredient,
+                halign="center",
+                font_style="H6",
+                theme_text_color="Custom",
+                text_color=(1, 1, 1, 1),
+                bold=True
+            )
+
+            info_label = MDLabel(
+                text="AI info coming soon",
+                halign="center",
+                font_style="Caption",
+                theme_text_color="Custom",
+                text_color=(1, 1, 1, 0.8)
+            )
+
+            badge = MDLabel(
+                text=" Safe",
+                halign="center",
+                font_style="Caption",
+                theme_text_color="Custom",
+                text_color=(1, 1, 1, 1),
+                bold=True
+            )
+
+            card_layout.add_widget(name_label)
+            card_layout.add_widget(info_label)
+            card_layout.add_widget(badge)
+            card.add_widget(card_layout)
+            self.grid.add_widget(card)
+>>>>>>> Stashed changes
 
 KnowYourBiteApp().run()
