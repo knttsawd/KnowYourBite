@@ -1,15 +1,26 @@
-import cv2
+from kivy.config import Config
+Config.set("graphics", "width", "300")
+Config.set("graphics", "height", "600")
+import io
 import json
-import re
 import logging
-from PIL import Image
+import re
+import cv2
+
+import requests
+from PIL import Image as PILImage
+from rapidfuzz import fuzz
 from llama_cpp import Llama
+
+from kivy.utils import platform
+from kivy.core.camera import Camera
 from kivy.clock import Clock
+from kivy.properties import NumericProperty
 from kivy.graphics.texture import Texture
 from kivy.uix.modalview import ModalView
-
 from kivymd.app import MDApp
 from kivymd.uix.screen import MDScreen
+from kivy.uix.image import Image
 from kivymd.uix.card import MDCard
 from kivymd.uix.label import MDLabel
 from kivymd.uix.scrollview import MDScrollView
@@ -20,38 +31,11 @@ from kivymd.uix.spinner import MDSpinner
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.textfield import MDTextField
 
-from rapidfuzz import fuzz
-import pytesseract
 
 logging.basicConfig(filename="app.log", level=logging.INFO)
 from kivy.graphics import Color, RoundedRectangle
 from kivy.uix.boxlayout import BoxLayout
 
-import cv2
-import time
-import os
-import sys
-import shutil
-import pytesseract
-from PIL import Image
-
-import shutil
-import sys
-
-# Automatically find Tesseract on any device
-tesseract_path = shutil.which("tesseract")
-
-if tesseract_path:
-    pytesseract.pytesseract.tesseract_cmd = tesseract_path
-elif sys.platform == "win32":
-    # Common Windows locations
-    for path in [
-        r'C:\Program Files\Tesseract-OCR\tesseract.exe',
-        r'C:\Users\{}\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'.format(os.getenv('USERNAME'))
-    ]:
-        if os.path.exists(path):
-            pytesseract.pytesseract.tesseract_cmd = path
-            break
 
 BADGE_COLORS = {
     "safe": (0.18, 0.8, 0.44, 1),
@@ -68,33 +52,61 @@ CARD_COLORS = [
     (0.98, 0.56, 0.78, 1),
 ]
 
-classifierLLM = Llama(
-    model_path="models/Phi-3-mini-4k-instruct-q4.gguf",
-    n_threads=4,
-    n_ctx=512
-)
+SERVER = "http://localhost:8000"
+def call_phi3(prompt):
+    payload = {
+        "prompt": prompt,
+        "max_tokens": 128
+    }
+
+    response = requests.post(f"{SERVER}/phi3", json=payload)
+    data = response.json()
+
+    return data["response"]
+
+def send_frame_to_ocr(frame):
+    image = PILImage.fromarray(frame)
+
+    image = image.resize((image.width // 2, image.height // 2))
+
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG")
+    image_bytes = buffer.getvalue()
+
+    response = requests.post(
+        f"{SERVER}/ocr",
+        data=image_bytes,
+        headers={"Content-Type": "application/octet-stream"}
+    )
+    data = response.json()
+    return data["text"]
+
 
 with open("additives.json", "r", encoding="utf-8") as f:
     additives = json.load(f)
 
 BASE_PROMPT = (
-    "Use simple, educational language and keep the explanation to three sentences. "
+    "Use simple, educational language and keep the explanation to three sentences, avoiding special characters. "
     "Describe what the ingredient is, why it is used in food, and any general considerations "
     "that food-safety authorities highlight. Avoid medical advice."
 )
+
+
 class CameraModal(ModalView):
     def __init__(self, on_capture_callback, **kwargs):
         super().__init__(**kwargs)
-        self.size_hint = (1, 1)  
+        self.size_hint = (1, 1)
         self.auto_dismiss = False
         self.on_capture_callback = on_capture_callback
 
+        # Layout
         self.layout = MDBoxLayout(orientation="vertical", spacing=10, padding=10)
 
-        from kivy.uix.image import Image
+        # Preview widget
         self.preview = Image(size_hint=(1, 1), allow_stretch=True, keep_ratio=True)
         self.layout.add_widget(self.preview)
 
+        # Buttons
         btn_layout = MDBoxLayout(size_hint_y=None, height="70dp", spacing=20, padding=10)
 
         capture_btn = MDRaisedButton(
@@ -109,36 +121,79 @@ class CameraModal(ModalView):
 
         btn_layout.add_widget(capture_btn)
         btn_layout.add_widget(cancel_btn)
-
         self.layout.add_widget(btn_layout)
         self.add_widget(self.layout)
 
-        self.cam = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+        self.is_android = platform == "android"
+
+        self.init_opencv_camera()
+
+    def init_opencv_camera(self):
+        self.cap = cv2.VideoCapture(0)
+
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
+        self.current_frame = None
+
         Clock.schedule_interval(self.update_preview, 1/30)
 
     def update_preview(self, dt):
-        ret, frame = self.cam.read()
+        if not self.cap.isOpened():
+            return
+
+        ret, frame = self.cap.read()
         if not ret:
             return
 
-        frame = cv2.flip(frame, 0)
-        buf = frame.tobytes()
-        texture = Texture.create(size=(frame.shape[1], frame.shape[0]), colorfmt='bgr')
-        texture.blit_buffer(buf, colorfmt='bgr', bufferfmt='ubyte')
+        self.current_frame = frame
+
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        texture = Texture.create(size=(frame.shape[1], frame.shape[0]), colorfmt='rgb')
+        texture.blit_buffer(frame.tobytes(), colorfmt='rgb', bufferfmt='ubyte')
 
         self.preview.texture = texture
 
-    def capture(self, instance):
-        ret, frame = self.cam.read()
-        if ret:
-            self.on_capture_callback(frame)
+    def capture(self, *args):
+        if self.current_frame is None:
+            return
+
+        rgb = cv2.cvtColor(self.current_frame, cv2.COLOR_BGR2RGB)
+
+        img = PILImage.fromarray(rgb)
+
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG")
+        buffer.seek(0)
+
+        self.on_capture_callback(buffer)
+
         self.dismiss()
 
     def on_dismiss(self):
-        if hasattr(self, "cam"):
-            self.cam.release()
+        if hasattr(self, "cap") and self.cap.isOpened():
+            self.cap.release()
+class AutoResizeLabel(MDLabel):
+    min_font_size = NumericProperty(10)
+    max_font_size = NumericProperty(40)
 
-    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.text_size = (None, None)  # keep text on one line
+        Clock.schedule_once(self.adjust_font_size)
+
+    def adjust_font_size(self, *args):
+        font_size = self.max_font_size
+        self.font_size = font_size
+
+        while font_size > self.min_font_size:
+            self.texture_update()
+            if self.texture_size[0] <= self.width:
+                break
+            font_size -= 1
+            self.font_size = font_size
+
 class KnowYourBiteApp(MDApp):
     def build(self):
         self.cache = {}
@@ -164,24 +219,17 @@ class KnowYourBiteApp(MDApp):
             spacing=4
         )
 
-        logo = MDLabel(
+        logo = AutoResizeLabel(
     text=" KnowYourBite ",
     halign="center",
-    font_style="H2",
     theme_text_color="Custom",
     text_color=(0.18, 0.8, 0.44, 1),
     size_hint_y=None,
     height="80dp",
-    bold=True
+    bold=True,
+    max_font_size=48,
+    min_font_size=20 
 )
-
-        title = MDLabel(
-            text="KnowYourBite",
-            halign="center",
-            font_style="H4",
-            size_hint_y=None,
-            height="60dp"
-        )
 
         subtitle = MDLabel(
             text="Scan your label. Know what you eat.",
@@ -194,12 +242,11 @@ class KnowYourBiteApp(MDApp):
         )
 
         title_layout.add_widget(logo)
-        title_layout.add_widget(title)
         title_layout.add_widget(subtitle)
 
         # Scan button
-        btn = MDRaisedButton(
-            text="📷  Scan Ingredient Label",
+        scan_btn = MDRaisedButton(
+            text="Scan Ingredient Label",
             pos_hint={"center_x": 0.5},
             size_hint=(0.7, None),
             height="52dp",
@@ -210,24 +257,27 @@ class KnowYourBiteApp(MDApp):
         manual_btn = MDRaisedButton(
             text="Enter Ingredients Manually",
             pos_hint={"center_x": 0.5},
-            size_hint_y=None,
-            height="50dp",
+            size_hint=(0.7, None),
+            height="52dp",
+            md_bg_color=(0.18, 0.8, 0.44, 1),
             on_release=self.manual_input
         )
 
         history_btn = MDRaisedButton(
             text="View History",
             pos_hint={"center_x": 0.5},
-            size_hint_y=None,
-            height="50dp",
+            size_hint=(0.7, None),
+            height="52dp",
+            md_bg_color=(0.18, 0.8, 0.44, 1),
             on_release=self.show_history
         )
 
         clear_btn = MDRaisedButton(
             text="Clear Results",
             pos_hint={"center_x": 0.5},
-            size_hint_y=None,
-            height="50dp",
+            size_hint=(0.7, None),
+            height="52dp",
+            md_bg_color=(0.18, 0.8, 0.44, 1),
             on_release=lambda x: self.grid.clear_widgets()
         )
 
@@ -293,12 +343,33 @@ class KnowYourBiteApp(MDApp):
 
     def extract_tier(self, text):
         text = text.lower()
+
+        SAFE_PHRASES = [
+            "low risk",
+            "low-risk",
+            "not harmful",
+            "no harm",
+            "no concern",
+            "not a concern",
+            "generally safe",
+            "safe to use",
+            "do not avoid",
+            "minimal risk",
+            "low concern"
+        ]
+
+        if any(p in text for p in SAFE_PHRASES):
+            return "Safe"
+
         if any(w in text for w in ["moderation", "limit", "carefully"]):
             return "Safe in Moderation"
-        if any(w in text for w in ["avoid", "risk", "harmful", "concern"]):
-            return "Higher Concern"
-        if any(w in text for w in ["safe", "generally safe", "low concern"]):
+
+        if "safe" in text:
             return "Safe"
+
+        if any(w in text for w in ["risk", "harmful", "concern"]):
+            return "Higher Concern"
+
         return "Unknown"
 
     def tier_color(self, tier):
@@ -312,12 +383,11 @@ class KnowYourBiteApp(MDApp):
 
     def safe_llm_call(self, prompt):
         try:
-            response = classifierLLM(
+            response = call_phi3(
                 f"<|begin_of_text|><|start_header_id|>user<|end_header_id|>{prompt}"
-                f"<|start_header_id|>assistant<|end_header_id|>",
-                max_tokens=150
+                f"<|start_header_id|>assistant<|end_header_id|>"
             )
-            return response["choices"][0]["text"].strip()
+            return response
         except Exception as e:
             logging.error(f"LLM error: {e}")
             return f"Error generating explanation: {e}"
@@ -334,12 +404,7 @@ class KnowYourBiteApp(MDApp):
         self.grid.clear_widgets()
 
         try:
-            cv2.imwrite("test_photo.jpg", frame)
-
-            image = Image.open("test_photo.jpg")
-            image = image.resize((image.width // 2, image.height // 2))
-
-            raw_text = pytesseract.image_to_string(image, config="--oem 1 --psm 6")
+            raw_text = send_frame_to_ocr(frame)
             raw_text = self.clean_text(raw_text)
 
             if not raw_text:
@@ -369,7 +434,7 @@ class KnowYourBiteApp(MDApp):
                         if k in ["additives_classes", "vegan", "vegetarian", "organic_eu"]}
 
                 prompt = (
-                    f"Using only this information: {info}, explain the general safety of {ingredient}. "
+                    f"Using only this information: {info}, explain the general safety of {ingredient} using the tiers Safe, Safe in Moderation, or Higher Concern. "
                     f"{BASE_PROMPT}"
                 )
             else:
@@ -397,14 +462,13 @@ class KnowYourBiteApp(MDApp):
             adaptive_height=True
         )
 
-        
         label = MDLabel(
-            text=f"{Ingredient.capitalize()} - {tier}",
+            text=f"{ingredient.capitalize()} - {tier}",
             halign="center",
             font_style="H6",
             size_hint_y=None,
             theme_text_color="Custom",
-            text_color=(1, 1, 1, 1),
+            text_color=(0, 0, 0, 1),
                 bold=True,
             height="30dp"
         )
@@ -415,7 +479,7 @@ class KnowYourBiteApp(MDApp):
             halign="left",
             font_style="Caption",
                 theme_text_color="Custom",
-                text_color=(1, 1, 1, 0.8),
+                text_color=(0, 0, 0, 1),
 
             size_hint_y=None,
             text_size=(self.screen.width - 80, None),
