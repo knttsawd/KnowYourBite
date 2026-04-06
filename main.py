@@ -15,6 +15,7 @@ from llama_cpp import Llama
 from kivy.utils import platform
 from kivy.core.camera import Camera
 from kivy.clock import Clock
+from kivy.uix.widget import Widget
 from kivy.properties import NumericProperty
 from kivy.graphics.texture import Texture
 from kivy.uix.modalview import ModalView
@@ -212,37 +213,53 @@ class KnowYourBiteApp(MDApp):
         )
 
         # Logo + Title
+
         title_layout = MDBoxLayout(
             orientation="vertical",
             size_hint_y=None,
-            height="120dp",
-            spacing=4
+            height="160dp",
+            spacing=6,
+            padding=[0, 10, 0, 10]
         )
+
 
         logo = AutoResizeLabel(
-    text=" KnowYourBite ",
+    text="KnowYourBite",
     halign="center",
     theme_text_color="Custom",
-    text_color=(0.18, 0.8, 0.44, 1),
+    text_color=(0.10, 0.65, 0.35, 1),
     size_hint_y=None,
-    height="80dp",
+    height="70dp",
     bold=True,
-    max_font_size=48,
-    min_font_size=20 
+    max_font_size=54,
+    min_font_size=24
 )
 
+
         subtitle = MDLabel(
-            text="Scan your label. Know what you eat.",
-            halign="center",
-            font_style="Caption",
-            theme_text_color="Custom",
-            text_color=(0.5, 0.5, 0.5, 1),
-            size_hint_y=None,
-            height="30dp"
-        )
+    text="Scan your label. Know what you eat.",
+    halign="center",
+    font_style="Subtitle2",
+    theme_text_color="Custom",
+    text_color=(0.25, 0.25, 0.25, 1),
+    size_hint_y=None,
+    height="28dp"
+)
+
+        disclaimer = MDLabel(
+    text="For informational purposes only — not medical advice.",
+    halign="center",
+    font_style="Caption",
+    theme_text_color="Custom",
+    text_color=(0.45, 0.45, 0.45, 1),
+    size_hint_y=None,
+    height="22dp"
+)
+
 
         title_layout.add_widget(logo)
         title_layout.add_widget(subtitle)
+        title_layout.add_widget(disclaimer)
 
         # Scan button
         scan_btn = MDRaisedButton(
@@ -452,6 +469,7 @@ class KnowYourBiteApp(MDApp):
         self.add_card(ingredient, tier, explanation)
 
     def add_card(self, ingredient, tier, text):
+
         card = MDCard(
             orientation="vertical",
             padding=20,
@@ -469,24 +487,26 @@ class KnowYourBiteApp(MDApp):
             size_hint_y=None,
             theme_text_color="Custom",
             text_color=(0, 0, 0, 1),
-                bold=True,
+            bold=True,
             height="30dp"
         )
 
+        # Spacer
+        spacer = Widget(size_hint_y=None, height="12dp")
 
         definition = MDLabel(
             text=text,
             halign="left",
             font_style="Caption",
-                theme_text_color="Custom",
-                text_color=(0, 0, 0, 1),
-
+            theme_text_color="Custom",
+            text_color=(0, 0, 0, 1),
             size_hint_y=None,
             text_size=(self.screen.width - 80, None),
             adaptive_height=True
         )
 
         card.add_widget(label)
+        card.add_widget(spacer)
         card.add_widget(definition)
         self.grid.add_widget(card)
 
@@ -533,7 +553,7 @@ class KnowYourBiteApp(MDApp):
         self.dialog = MDDialog(
             title="Enter Ingredients",
             type="custom",
-            content_cls=MDTextField(hint_text="Please return a list of ingredient names separated by commas"),
+            content_cls=MDTextField(hint_text="Comma separated list"),
             buttons=[
                 MDRaisedButton(text="Submit", on_release=self.process_manual)
             ]
