@@ -43,3 +43,39 @@
             card_layout.add_widget(badge)
             card.add_widget(card_layout)
             self.grid.add_widget(card)
+
+
+
+        title = MDLabel(
+            text="KnowYourBite",
+            halign="center",
+            valign="center",
+            theme_text_color="Custom",
+            text_color=(0.18, 0.8, 0.44, 1),
+            font_size=Window.width * 0.25,
+            size_hint_y=None,
+            height=Window.height * 0.25, 
+            bold=True
+        )
+
+        subtitle = MDLabel(
+            text="Scan your label. Know what you eat.",
+            halign="center",
+            font_style="Caption",
+            theme_text_color="Custom",
+            text_color=(0.5, 0.5, 0.5, 1),
+            size_hint_y=None,
+            height="30dp"
+        )
+
+        title_layout.add_widget(title)
+        title_layout.add_widget(subtitle)
+
+manual_btn = MDRaisedButton(
+            text="Enter Ingredients Manually",
+            pos_hint={"center_x": 0.5},
+            size_hint=(0.7, None),
+            height="52dp",
+            md_bg_color=(0.18, 0.8, 0.44, 1),
+            on_release=self.manual_input
+        )
